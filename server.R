@@ -1,14 +1,22 @@
 library(xml2)
 library(plyr)
+library(dplyr)
 library(leaflet)
 library(stringi)
 library(htmltools)
 library(htmlwidgets)
 library(RColorBrewer)
 library(rvest)
+library(gsubfn)
+library(qdap)
 
-ss <-  c("Tropical Depression", "Tropical Storm", "Hurricane-1", "Hurricane-2", "Hurricane-3", "Hurricane-4", "Hurricane-5")
+ss <- c("Tropical Depression", "Tropical Storm", "Hurricane-1", "Hurricane-2", "Hurricane-3", "Hurricane-4", "Hurricane-5")
+bb <- c("Tropical Depression", "Tropical Storm", "Cyclone-1", "Cyclone-2", "Cyclone-3", "Cyclone-4", "Cyclone-5")
+tt <- c("Tropical Depression", "Tropical Storm", "Typhoon-1", "Typhoon-2", "Typhoon-3", "Typhoon-4", "Super Typhoon-4", "Super Typhoon-5")
+
 pal <- colorRampPalette(c("blue", "green", "yellow", "orange", "red", "darkred", "black"))(length(ss))
+pal2 <- colorRampPalette(c("blue", "green", "yellow", "orange", "red", "darkred", "black"))(length(bb))
+pal3 <- colorRampPalette(c("blue", "green", "yellow", "orange", "red", "darkred","pink", "black"))(length(tt))
 
 function(input, output, session) {
    
@@ -52,17 +60,37 @@ function(input, output, session) {
       # req(input$sname)
       url <- paste(data_url(),selection(), sep = "/")
       storm <- readLines(url)
-      storm <- read.table(textConnection(gsub("TROPICAL ", "TROPICAL_", storm[3:length(storm)])), header=TRUE, stringsAsFactors=FALSE)
+      # storm <- read.table(textConnection(gsub("TROPICAL ", "TROPICAL_", storm[3:length(storm)])), header=TRUE, stringsAsFactors=FALSE, fill = TRUE)
+      storm <- read.table(textConnection(mgsub(c("TROPICAL ", "SUPER "), c("TROPICAL_", "SUPER_"), storm[3:length(storm)])), header=TRUE, stringsAsFactors=FALSE, fill = TRUE)
+      
       # make storm type names prettier
       storm$STAT <- stri_trans_totitle(gsub("_", " ", storm$STAT))
       
       # make column names prettier
       colnames(storm) <- c("advisory", "lat", "lon", "time", "wind_speed", "pressure", "status")
+      
       # Storm scale
       # ss <-  c("Tropical Depression", "Tropical Storm", "Hurricane-1", "Hurricane-2", "Hurricane-3", "Hurricane-4", "Hurricane-5")
       # pal <- colorRampPalette(c("blue", "green", "yellow", "orange", "red", "darkred", "black"))(length(ss))
       
-      storm$color <- as.character(factor(storm$status, levels = ss, labels = pal))
+      
+      if(input$region == "atlantic" | input$region == "e_pacific"){
+         storm$color <- as.character(factor(storm$status, levels = ss, labels = pal))
+         leafletProxy("map", session) %>%
+            addLegend("bottomright", colors = pal, labels = ss)
+         
+      } else if (input$region == "s_pacific" | input$region == "s_indian" | input$region == "n_indian"){
+         storm$color <- as.character(factor(storm$status, levels = bb, labels = pal2))
+         leafletProxy("map", session) %>%
+            addLegend("bottomright", colors = pal2, labels = bb)
+      } else {
+         storm$color <- as.character(factor(storm$status, levels = tt, labels = pal3))
+         leafletProxy("map", session) %>%
+            addLegend("bottomright", colors = pal3, labels = tt)
+      }
+      
+      
+      # storm$color <- as.character(factor(storm$status, levels = ss, labels = pal))
       # lighten past position colors
       storm$opacity <- 0.8
       storm$opacity[strptime(storm$time, format="%m/%d/%H") <= Sys.time()] <- 0.1
@@ -91,7 +119,6 @@ function(input, output, session) {
    #    # selection()
    # })
 
-   
 
    # Create the map
    output$map <- renderLeaflet({
@@ -99,14 +126,15 @@ function(input, output, session) {
           
          leaflet(cyclone_track()) %>%
          
-         addTiles(group = "OSM (default)") %>%
-         addProviderTiles(providers$Esri.WorldImagery, group = "Esri World Imagery") %>%
+         
+         addProviderTiles(providers$Esri.WorldImagery, group = "Esri World Imagery (default)") %>%
+         addTiles(group = "OSM") %>%
          addProviderTiles(providers$OpenStreetMap.HOT, group = "HOT OSM") %>%
          addProviderTiles(providers$NASAGIBS.ModisTerraTrueColorCR, group = "NASA GIBS") %>%
          
          addPolylines(~lon, ~lat, color = 'grey', weight=3) %>%
          
-         addCircleMarkers(~lon, ~lat, radius = ~wind_speed / 3, stroke = TRUE, color = 'grey',
+         addCircleMarkers(~lon, ~lat, radius = 7, stroke = FALSE, color = 'grey',
                           opacity = 1, weight = 2, fill = true, fillColor = ~color,
                           fillOpacity = ~opacity,
                           popup = ~sprintf("<b>Advisory forecast %s (%s)</b><hr noshade size='1'/>
@@ -118,10 +146,17 @@ function(input, output, session) {
                                            htmlEscape(lon), htmlEscape(lat),
                                            htmlEscape(status), htmlEscape(wind_speed), htmlEscape(pressure))
          ) %>%
-         addLegend("bottomright", colors = pal, labels = ss) %>%
+         # if(input$region == "atlantic"){
+         #    addLegend("bottomright", colors = pal, labels = ss)
+         # } else if (input$region == "n_indian"){
+         #    addLegend("bottomright", colors = pal2, labels = bb)
+         # } else {
+         #    addLegend("bottomright", colors = pal3, labels = tt)
+         # } 
+         # addLegend("bottomright", colors = pal3, labels = tt) %>%
          
          addLayersControl(
-            baseGroups = c("OSM (default)", "Esri World Imagery", "HOT OSM", "NASA GIBS"),
+            baseGroups = c("Esri World Imagery (default)", "OSM", "HOT OSM", "NASA GIBS"),
             options = layersControlOptions(),
             position = "topleft"
          )
@@ -129,4 +164,22 @@ function(input, output, session) {
       #setView(lng = 90.85, lat = 8.45, zoom = 3)
       
    }) #renderLeaflet
+   
+   ####################Data Table ##################
+   
+   observe({
+      input$year 
+   })
+   
+   output$cyclonedatatable <- DT::renderDataTable({
+      eefdb <- tbl_df(read.csv("data/EEFDB.csv", stringsAsFactors = FALSE, encoding = 'UTF-8'))
+      
+      # s2 <- gsub("/.*","",selection())
+      
+      filter(eefdb, Disaster.Year == input$year)
+      
+     
+
+   })
+   
 }

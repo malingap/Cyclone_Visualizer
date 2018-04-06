@@ -1,6 +1,6 @@
 library(leaflet)
 library(shiny)
-
+library(shinycssloaders)
 
 navbarPage("Cyclone Track Visalizer", id="nav",
            
@@ -24,17 +24,17 @@ navbarPage("Cyclone Track Visalizer", id="nav",
                                                              "East Pacific" = "e_pacific", "West Pacific" = "w_pacific", 
                                                              "South Pacific" = "s_pacific", "South Indian" = "s_indian", 
                                                              "North Indian" = "n_indian"),
-                                              selected = NULL),#selectInput
+                                              selected = "atlantic"),#selectInput
                                   
                                   textOutput("c_region"),
                                   
                                   selectInput("year", 
                                               label = "Cyclone Year:",
-                                              choices = list("Select Cyclone Year" = "y","2014", "2015", "2016", "2017"),
-                                              selected = NULL),#selectInput
+                                              choices = list("Select Cyclone Year" = "y","2014", "2015", "2016", "2017", "2018"),
+                                              selected = "2014"),#selectInput
                                   
                                   textOutput("c_year"),
-                                  uiOutput("cycloneSelect")
+                                  withSpinner(uiOutput("cycloneSelect"), size = 0.25, proxy.height = 100)
                                   # uiOutput("s_url")
                                   
                        
